@@ -17,9 +17,12 @@ const Navbar = () => {
                         <Link to='/home'> Home</Link>
                         <Link to='/explore'> Explore</Link>
                         <Link to='/plan-my-trip'> Plan My Trip</Link>
+
                         <Link to='/ai-guides'> AI Guide</Link>
+
                         <Link to='/my-trip'> My Trips</Link>
-                        <Link to='/about'> About</Link>
+                        <Link to='/place-map'> Map</Link>
+                        <Link to='/review'> Review</Link>
                     </ul>
                 </div>
 
