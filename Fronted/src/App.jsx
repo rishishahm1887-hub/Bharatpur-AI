@@ -1,34 +1,82 @@
-import { Route, Routes } from "react-router-dom"
-import Home from "./Pages/Home"
-import Explore from "./Pages/Explore"
-import Navbar from "./Component/Navbar"
-import Planmytrip from "./Pages/Planmytrip"
-import Aiguides from "./Pages/Aiguides"
-import Mytrip from "./Pages/Mytrip"
-import About from "./Pages/About"
-import Placemap from "./Pages/Placemap"
-import Review from "./Pages/Review"
+import {
+  Route,
+  Routes,
+} from "react-router-dom";
 
+import Home from "./Pages/Home";
+import Explore from "./Pages/Explore";
+import Navbar from "./Component/Navbar";
+import Planmytrip from "./Pages/Planmytrip";
+import Aiguides from "./Pages/Aiguides";
+import Mytrip from "./Pages/Mytrip";
+import About from "./Pages/About";
+import Placemap from "./Pages/Placemap";
+import Review from "./Pages/Review";
 
 const App = () => {
   return (
     <div>
       <Navbar />
+
       <Routes>
-        <Route path="/home" element={<Home />} /> //jas page 1
-        <Route path="/Explore" element={<Explore />} /> //jas page 2
-        <Route path="/plan-my-trip" element={<Planmytrip />} /> //place detail page 3
 
-        <Route path="/ai-guides" element={<Aiguides />} /> //sun page 5
+        {/* Home */}
+        <Route
+          path="/"
+          element={<Home />}
+        />
 
-        <Route path="/my-trip" element={<Mytrip />} /> //naveen page 4
-        <Route path="/place-map" element={<Placemap />} /> //naveen page 6
-        <Route path="/review" element={<Review />} /> // naveen page 7
+        {/* Explore */}
+        <Route
+          path="/explore"
+          element={<Explore />}
+        />
 
-        <Route path="/about" element={<About />} /> //naveen
+        {/* Plan my trip */}
+        <Route
+          path="/plan-my-trip"
+          element={<Planmytrip />}
+        />
+
+        {/* AI Guides */}
+        <Route
+          path="/ai-guides"
+          element={<Aiguides />}
+        />
+
+        {/* My Trip */}
+        <Route
+          path="/my-trip"
+          element={<Mytrip />}
+        />
+
+        {/* Map */}
+        <Route
+          path="/place-map"
+          element={<Placemap />}
+        />
+
+        {/* Map for specific MongoDB place */}
+        <Route
+          path="/places/:id/map"
+          element={<Placemap />}
+        />
+
+        {/* Review */}
+        <Route
+          path="/review"
+          element={<Review />}
+        />
+
+        {/* About */}
+        <Route
+          path="/about"
+          element={<About />}
+        />
+
       </Routes>
     </div>
-  )
-}
+  );
+};
 
-export default App
+export default App;
