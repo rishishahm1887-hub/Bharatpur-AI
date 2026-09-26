@@ -276,7 +276,7 @@ const Home = () => {
 
             <img
               src="https://images.unsplash.com/photo-1549366021-9f761d450615?auto=format&fit=crop&w=1500&q=90"
-              alt="Chitwan National Park"
+              alt="Chitwan National"
               className="
                 h-[330px]
                 w-full
