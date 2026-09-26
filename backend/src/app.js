@@ -5,21 +5,26 @@ import compression from "compression";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 
-import { env } from "./config/env.js";
-
 import placesRoutes from "./routes/places.routes.js";
 import tripsRoutes from "./routes/trips.routes.js";
+import plannerRoutes from "./routes/planner.routes.js";
 
 import { apiLimiter } from "./middleware/rateLimit.js";
 
 import {
     notFound,
-    errorHandler
+    errorHandler,
 } from "./middleware/error.js";
 
 
 const app = express();
 
+
+/*
+=====================================================
+BASIC SECURITY
+=====================================================
+*/
 
 app.disable("x-powered-by");
 
@@ -27,11 +32,17 @@ app.disable("x-powered-by");
 app.use(
     helmet({
         crossOriginResourcePolicy: {
-            policy: "cross-origin"
-        }
+            policy: "cross-origin",
+        },
     })
 );
 
+
+/*
+=====================================================
+CORS
+=====================================================
+*/
 
 app.use(
     cors({
@@ -61,12 +72,24 @@ app.use(
 );
 
 
+/*
+=====================================================
+COMPRESSION
+=====================================================
+*/
+
 app.use(compression());
 
 
+/*
+=====================================================
+BODY PARSING
+=====================================================
+*/
+
 app.use(
     express.json({
-        limit: "100kb"
+        limit: "100kb",
     })
 );
 
@@ -74,41 +97,61 @@ app.use(
 app.use(
     express.urlencoded({
         extended: false,
-        limit: "50kb"
+        limit: "50kb",
     })
 );
 
 
+/*
+=====================================================
+HTTP LOGGER
+=====================================================
+*/
+
 app.use(pinoHttp());
 
+
+/*
+=====================================================
+CLERK AUTHENTICATION
+=====================================================
+*/
 
 app.use(clerkMiddleware());
 
 
+/*
+=====================================================
+API RATE LIMITER
+=====================================================
+*/
+
 app.use("/api", apiLimiter);
 
 
-/* =====================================================
-   HEALTH CHECK
-===================================================== */
+/*
+=====================================================
+HEALTH CHECK
+=====================================================
+*/
 
 app.get(
     "/health",
     (req, res) => {
-
         res.json({
             success: true,
             service: "bharatpur-ai-api",
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         });
-
     }
 );
 
 
-/* =====================================================
-   ROUTES
-===================================================== */
+/*
+=====================================================
+API ROUTES
+=====================================================
+*/
 
 app.use(
     "/api/places",
@@ -122,17 +165,34 @@ app.use(
 );
 
 
-/* =====================================================
-   ERROR HANDLING
-===================================================== */
+/*
+=====================================================
+AI / SMART TRIP PLANNER
+=====================================================
+*/
+
+app.use(
+    "/api/planner",
+    plannerRoutes
+);
+
+
+/*
+=====================================================
+404
+=====================================================
+*/
 
 app.use(notFound);
 
+
+/*
+=====================================================
+ERROR HANDLER
+=====================================================
+*/
+
 app.use(errorHandler);
 
-
-/* =====================================================
-   EXPORT APP
-===================================================== */
 
 export default app;

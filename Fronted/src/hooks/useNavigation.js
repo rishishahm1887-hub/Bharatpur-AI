@@ -1,4 +1,3 @@
-
 import {
     useCallback,
     useEffect,
@@ -12,13 +11,17 @@ import {
 |--------------------------------------------------------------------------
 */
 
+// Distance from route before we consider the user off-route.
 const OFF_ROUTE_DISTANCE = 50;
 
 // Minimum time between automatic reroutes.
 const REROUTE_COOLDOWN_MS = 15000;
 
-// Refresh traffic route every 3 minutes.
+// Refresh traffic-aware route every 3 minutes.
 const ROUTE_REFRESH_MS = 180000;
+
+// Ignore extremely inaccurate GPS readings.
+const MAX_GPS_ACCURACY = 150;
 
 
 /*
@@ -189,7 +192,6 @@ function normalizePathPoint(point) {
     /*
      * google.maps.LatLng
      */
-
     if (
         typeof point.lat === "function" &&
         typeof point.lng === "function"
@@ -220,7 +222,6 @@ function normalizePathPoint(point) {
     /*
      * LatLngLiteral
      */
-
     const lat = Number(
         point.lat
     );
@@ -257,7 +258,9 @@ function normalizeRoute(route) {
     }
 
     const rawPath =
-        route.path || [];
+        Array.isArray(route.path)
+            ? route.path
+            : [];
 
     const path =
         rawPath
@@ -268,21 +271,55 @@ function normalizeRoute(route) {
         return null;
     }
 
+    /*
+     * Current Google Routes JS API exposes:
+     *
+     * distanceMeters
+     * durationMillis
+     */
+    const distanceMeters =
+        Number(
+            route.distanceMeters
+        ) || 0;
+
+    const durationMillis =
+        Number(
+            route.durationMillis
+        ) || 0;
+
     return {
         path,
 
-        distanceMeters:
-            Number(
-                route.distanceMeters
-            ) || 0,
+        distanceMeters,
 
-        durationMillis:
-            Number(
-                route.durationMillis
-            ) || 0,
+        durationMillis,
 
         raw: route,
     };
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Normalize travel mode
+|--------------------------------------------------------------------------
+*/
+
+function normalizeTravelMode(
+    mode,
+    TravelMode
+) {
+    switch (mode) {
+        case "walking":
+            return TravelMode.WALKING;
+
+        case "bicycling":
+            return TravelMode.BICYCLING;
+
+        case "driving":
+        default:
+            return TravelMode.DRIVING;
+    }
 }
 
 
@@ -374,24 +411,11 @@ export default function useNavigation({
     const lastRerouteRef =
         useRef(0);
 
-    /*
-     * Prevent simultaneous Google route requests.
-     */
-
     const routeRequestInFlightRef =
         useRef(false);
 
-    /*
-     * Unique ID for each route request.
-     */
-
     const routeRequestIdRef =
         useRef(0);
-
-    /*
-     * Stop automatic retries after
-     * Google reports quota exhaustion.
-     */
 
     const quotaExhaustedRef =
         useRef(false);
@@ -430,16 +454,22 @@ export default function useNavigation({
             (routeData) => {
                 if (
                     !routeData ||
-                    !routeData.durationMillis
+                    !Number.isFinite(
+                        routeData.durationMillis
+                    ) ||
+                    routeData.durationMillis <= 0
                 ) {
                     setEta(null);
                     return;
                 }
 
                 const minutes =
-                    Math.round(
-                        routeData.durationMillis /
-                        60000
+                    Math.max(
+                        1,
+                        Math.round(
+                            routeData.durationMillis /
+                            60000
+                        )
                     );
 
                 setEta(minutes);
@@ -670,7 +700,7 @@ export default function useNavigation({
 
                 /*
                 |--------------------------------------------------------------------------
-                | LOCK REQUEST
+                | Lock request
                 |--------------------------------------------------------------------------
                 */
 
@@ -716,22 +746,11 @@ export default function useNavigation({
                     |--------------------------------------------------------------------------
                     */
 
-                    let travelMode =
-                        TravelMode.DRIVING;
-
-                    if (
-                        mode === "walking"
-                    ) {
-                        travelMode =
-                            TravelMode.WALKING;
-                    }
-
-                    if (
-                        mode === "bicycling"
-                    ) {
-                        travelMode =
-                            TravelMode.BICYCLING;
-                    }
+                    const travelMode =
+                        normalizeTravelMode(
+                            mode,
+                            TravelMode
+                        );
 
 
                     /*
@@ -778,6 +797,16 @@ export default function useNavigation({
                     |--------------------------------------------------------------------------
                     | Traffic-aware driving
                     |--------------------------------------------------------------------------
+                    |
+                    | IMPORTANT:
+                    |
+                    | Do NOT manually set:
+                    |
+                    | request.departureTime = new Date();
+                    |
+                    | Google automatically uses the current request
+                    | time when departureTime is omitted.
+                    |
                     */
 
                     if (
@@ -786,8 +815,14 @@ export default function useNavigation({
                         request.routingPreference =
                             "TRAFFIC_AWARE_OPTIMAL";
 
-                        request.departureTime =
-                            new Date();
+                        /*
+                         * NO departureTime here.
+                         *
+                         * This fixes:
+                         *
+                         * INVALID_ARGUMENT:
+                         * Timestamp must be set to a future time.
+                         */
                     }
 
 
@@ -802,17 +837,31 @@ export default function useNavigation({
                         {
                             requestId,
 
-                            origin:
-                                request.origin,
+                            origin: {
+                                lat: originLat,
+                                lng: originLng,
+                            },
 
                             destinationGooglePlaceId:
                                 googlePlaceId,
 
                             mode,
 
+                            routingPreference:
+                                request.routingPreference ||
+                                "DEFAULT",
+
                             automatic,
 
                             force,
+
+                            /*
+                             * Useful confirmation that the
+                             * problematic timestamp is gone.
+                             */
+                            departureTime:
+                                request.departureTime ||
+                                "NOT_SET",
                         }
                     );
 
@@ -858,8 +907,7 @@ export default function useNavigation({
                         !Array.isArray(
                             result.routes
                         ) ||
-                        result.routes.length ===
-                        0
+                        result.routes.length === 0
                     ) {
                         throw new Error(
                             "Google Maps did not return a route."
@@ -883,8 +931,7 @@ export default function useNavigation({
                             );
 
                     if (
-                        normalizedRoutes.length ===
-                        0
+                        normalizedRoutes.length === 0
                     ) {
                         throw new Error(
                             "Google returned an invalid route."
@@ -963,6 +1010,16 @@ export default function useNavigation({
                             durationMillis:
                                 normalizedRoutes[0]
                                     .durationMillis,
+
+                            etaMinutes:
+                                normalizedRoutes[0]
+                                    .durationMillis
+                                    ? Math.round(
+                                        normalizedRoutes[0]
+                                            .durationMillis /
+                                        60000
+                                    )
+                                    : null,
                         }
                     );
 
@@ -1019,6 +1076,29 @@ export default function useNavigation({
 
                     /*
                     |--------------------------------------------------------------------------
+                    | Timestamp error
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if (
+                        message.includes(
+                            "Timestamp must be set to a future time"
+                        )
+                    ) {
+                        setError(
+                            "Google rejected the route time. The departure timestamp was invalid."
+                        );
+
+                        console.error(
+                            "🕐 INVALID GOOGLE DEPARTURE TIME"
+                        );
+
+                        return null;
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
                     | Normal route error
                     |--------------------------------------------------------------------------
                     */
@@ -1032,8 +1112,8 @@ export default function useNavigation({
 
                 } finally {
                     /*
-                    * ALWAYS unlock the request.
-                    */
+                     * ALWAYS unlock the request.
+                     */
 
                     routeRequestInFlightRef.current =
                         false;
@@ -1142,7 +1222,8 @@ export default function useNavigation({
                     Number.isFinite(
                         accuracy
                     ) &&
-                    accuracy > 150
+                    accuracy >
+                    MAX_GPS_ACCURACY
                 ) {
                     console.warn(
                         "⚠️ GPS accuracy too poor:",
@@ -1152,6 +1233,12 @@ export default function useNavigation({
                     return;
                 }
 
+
+                /*
+                |--------------------------------------------------------------------------
+                | Current position
+                |--------------------------------------------------------------------------
+                */
 
                 const currentPosition = {
                     lat,
@@ -1259,8 +1346,7 @@ export default function useNavigation({
 
                 /*
                 |--------------------------------------------------------------------------
-                | If Google quota already exhausted,
-                | don't request anything.
+                | Google quota exhausted
                 |--------------------------------------------------------------------------
                 */
 
@@ -1379,6 +1465,8 @@ export default function useNavigation({
                                 distanceFromRoute,
 
                                 threshold,
+
+                                currentPosition,
                             }
                         );
 
@@ -1583,7 +1671,7 @@ export default function useNavigation({
 
                 /*
                 |--------------------------------------------------------------------------
-                | Place ID
+                | Google Place ID
                 |--------------------------------------------------------------------------
                 */
 
@@ -1667,7 +1755,9 @@ export default function useNavigation({
                 */
 
                 navigator.geolocation.getCurrentPosition(
-                    async (geoPosition) => {
+                    async (
+                        geoPosition
+                    ) => {
                         try {
                             const coords =
                                 geoPosition.coords;
@@ -1680,6 +1770,11 @@ export default function useNavigation({
                             const lng =
                                 Number(
                                     coords.longitude
+                                );
+
+                            const accuracy =
+                                Number(
+                                    coords.accuracy
                                 );
 
 
@@ -1701,9 +1796,11 @@ export default function useNavigation({
                                 lng,
 
                                 accuracy:
-                                    Number(
-                                        coords.accuracy
-                                    ) || null,
+                                    Number.isFinite(
+                                        accuracy
+                                    )
+                                        ? accuracy
+                                        : null,
                             };
 
 
@@ -1755,7 +1852,9 @@ export default function useNavigation({
                         navigatingRef.current =
                             false;
 
-                        setIsNavigating(false);
+                        setIsNavigating(
+                            false
+                        );
 
                         startingNavigationRef.current =
                             false;
@@ -1788,38 +1887,76 @@ export default function useNavigation({
     */
 
     const stopNavigation =
-        useCallback(() => {
-            navigatingRef.current =
-                false;
+        useCallback(
+            () => {
+                navigatingRef.current =
+                    false;
 
-            startingNavigationRef.current =
-                false;
+                startingNavigationRef.current =
+                    false;
 
-            setIsNavigating(false);
-
-            setLoadingRoute(false);
-
-            setOffRoute(false);
-
-
-            if (
-                watchIdRef.current !==
-                null &&
-                navigator.geolocation
-            ) {
-                navigator.geolocation.clearWatch(
-                    watchIdRef.current
+                setIsNavigating(
+                    false
                 );
 
-                watchIdRef.current =
-                    null;
-            }
+                setLoadingRoute(
+                    false
+                );
+
+                setOffRoute(
+                    false
+                );
 
 
-            console.log(
-                "🛑 Navigation stopped."
-            );
-        }, []);
+                if (
+                    watchIdRef.current !==
+                    null &&
+                    navigator.geolocation
+                ) {
+                    navigator.geolocation.clearWatch(
+                        watchIdRef.current
+                    );
+
+                    watchIdRef.current =
+                        null;
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Reset navigation route state
+                |--------------------------------------------------------------------------
+                */
+
+                routeRequestIdRef.current +=
+                    1;
+
+                routeRequestInFlightRef.current =
+                    false;
+
+                setRoute(null);
+
+                setRoutes([]);
+
+                setSelectedRoute(0);
+
+                setEta(null);
+
+                setDistanceToDestination(
+                    null
+                );
+
+                setSnappedDestination(
+                    null
+                );
+
+
+                console.log(
+                    "🛑 Navigation stopped."
+                );
+            },
+            []
+        );
 
 
     /*
@@ -1833,7 +1970,7 @@ export default function useNavigation({
             async () => {
                 /*
                 |--------------------------------------------------------------------------
-                | Don't retry known quota failure.
+                | Don't retry known quota failure
                 |--------------------------------------------------------------------------
                 */
 
@@ -1850,7 +1987,7 @@ export default function useNavigation({
 
                 /*
                 |--------------------------------------------------------------------------
-                | Don't duplicate request.
+                | Don't duplicate request
                 |--------------------------------------------------------------------------
                 */
 
@@ -1867,6 +2004,17 @@ export default function useNavigation({
 
                 const currentPosition =
                     positionRef.current;
+
+
+                if (
+                    !currentPosition
+                ) {
+                    setError(
+                        "Current GPS location is not available yet."
+                    );
+
+                    return null;
+                }
 
 
                 return requestRoute(
@@ -1896,6 +2044,9 @@ export default function useNavigation({
 
             startingNavigationRef.current =
                 false;
+
+            routeRequestIdRef.current +=
+                1;
 
             if (
                 watchIdRef.current !==
@@ -1955,4 +2106,3 @@ export default function useNavigation({
         selectRoute,
     };
 }
-
