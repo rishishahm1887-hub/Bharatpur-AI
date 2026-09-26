@@ -52,11 +52,11 @@ const Navbar = () => {
             path: "/my-trip",
             icon: Bookmark,
         },
-        {
-            name: "Map",
-            path: "/place-map",
-            icon: MapPinned,
-        },
+        // {
+        //     name: "Map",
+        //     path: "/place-map",
+        //     icon: MapPinned,
+        // },
         {
             name: "Review",
             path: "/review",

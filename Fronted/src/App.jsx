@@ -51,12 +51,12 @@ const App = () => {
         />
 
         {/* Map */}
-        <Route
+        {/* <Route
           path="/place-map"
           element={<Placemap />}
-        />
+        /> */}
 
-        {/* Map for specific MongoDB place */}
+        {/* Map for specific MongoDB plax`ce */}
         <Route
           path="/places/:id/map"
           element={<Placemap />}
